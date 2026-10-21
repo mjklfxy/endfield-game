@@ -5,6 +5,7 @@
   const audio = new Map();
   const cleanup = [];
   const storageKey = 'endfield-circuit.preview.progress.v1';
+  const portraitTouchScreen = window.matchMedia('(orientation: portrait) and (any-pointer: coarse)');
 
   function listen(target, event, listener, options) {
     target.addEventListener(event, listener, options);
@@ -54,8 +55,10 @@
       });
     },
     pauseAudio() { audio.forEach((sound) => sound.pause()); },
+    /** Blocks portrait touch input while the orientation prompt owns the screen. */
     onPointer(callback) {
       const bind = (phase) => (event) => {
+        if (portraitTouchScreen.matches) return;
         if (phase === 'start' && event.button !== 0) return;
         if (phase === 'end' && event.button !== 0) return;
         if (phase === 'start') {
@@ -85,8 +88,19 @@
         callback();
       });
     },
+    /** Treats portrait mobile mode like backgrounding, pausing drags, audio, and frames until landscape returns. */
     onVisibility(callback) {
-      return listen(document, 'visibilitychange', () => callback(!document.hidden, {}));
+      const syncVisibility = () => {
+        const blocked = portraitTouchScreen.matches;
+        const shell = document.querySelector('.shell');
+        shell.inert = blocked;
+        shell.setAttribute('aria-hidden', String(blocked));
+        callback(!document.hidden && !blocked, {});
+      };
+      const removers = [listen(document, 'visibilitychange', syncVisibility),
+        listen(portraitTouchScreen, 'change', syncVisibility)];
+      syncVisibility();
+      return () => removers.forEach((remove) => remove());
     },
     onResize(callback) {
       const observer = new ResizeObserver(callback);
